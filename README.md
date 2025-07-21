@@ -13,6 +13,7 @@ MCP MIDI Bridge is an Electron-based desktop application that acts as a bridge b
 - **Song Cache**: Stores song data for persistence between sessions
 - **User Dashboard**: Simple interface for viewing and playing songs
 - **MIDI Import/Export**: Support for importing and exporting MIDI files (coming soon)
+- **Client Library**: JavaScript client for easy integration with other applications
 
 ## Prerequisites
 
@@ -79,6 +80,60 @@ To specify a different port (if you've changed it in the settings):
 
 ```bash
 npm run test-api -- --port=3001
+```
+
+## Using the MCP Client
+
+The project includes a JavaScript client library that makes it easy to interact with the MCP MIDI Bridge from your own applications.
+
+### Basic Client Usage
+
+Run the simple client example:
+
+```bash
+npm run client
+```
+
+This will connect to the MCP server on port 3000 and send a multi-channel sequence.
+
+### Advanced Client Example
+
+Run the more advanced example with chord progressions and melodies:
+
+```bash
+npm run example
+```
+
+### Using the Client in Your Own Code
+
+```javascript
+const McpMidiClient = require('./src/mcp-client');
+
+async function example() {
+  // Create a client
+  const client = new McpMidiClient({ port: 3000 });
+  
+  // Get the current song
+  const currentSong = await client.getCurrentSong();
+  
+  // Create a simple sequence
+  const sequence = {
+    notes: [
+      { pitch: 60, startTime: 0.0, endTime: 0.5, velocity: 80, instrument: 0, program: 0 },
+      { pitch: 64, startTime: 0.5, endTime: 1.0, velocity: 80, instrument: 0, program: 0 },
+      { pitch: 67, startTime: 1.0, endTime: 1.5, velocity: 80, instrument: 0, program: 0 }
+    ],
+    tempos: [{ time: 0, qpm: 120 }],
+    timeSignatures: [{ time: 0, numerator: 4, denominator: 4 }],
+    totalTime: 1.5
+  };
+  
+  // Send the sequence to the MCP server
+  const response = await client.sendNoteSequence(sequence);
+  console.log('Sequence sent successfully:', response);
+}
+
+example();
 ```
 
 ## Multi-Channel MIDI Support
@@ -175,7 +230,9 @@ mcp-midi/
 │   ├── main/           # Electron main process
 │   ├── renderer/       # Electron renderer process (UI)
 │   ├── common/         # Shared code between main and renderer
-│   └── python/         # Python backend with Magenta integration
+│   ├── python/         # Python backend with Magenta integration
+│   ├── mcp-client.js   # Client library for MCP API
+│   └── example-client.js # Example usage of the client library
 ├── public/             # Static assets
 ├── song_cache/         # For storing song data
 ├── package.json        # Node.js dependencies and scripts
@@ -200,6 +257,7 @@ This will create distributable packages in the `dist` directory.
 - [x] Simple user interface
 - [x] Multi-channel MIDI support
 - [x] Configurable MCP server port
+- [x] JavaScript client library
 - [ ] MIDI file import/export
 - [ ] Piano roll visualization
 - [ ] DAW sync via MIDI clock

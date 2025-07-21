@@ -8,7 +8,9 @@
     "dev": "electron . --dev",
     "build": "electron-builder",
     "postinstall": "electron-builder install-app-deps",
-    "test-api": "node src/test-mcp-api.js"
+    "test-api": "node src/test-mcp-api.js",
+    "client": "node src/mcp-client.js",
+    "example": "node src/example-client.js"
   },
   "keywords": ["midi", "mcp", "llm", "music", "magenta", "daw"],
   "author": "",
