@@ -12,6 +12,12 @@ contextBridge.exposeInMainWorld('api', {
   // MIDI functionality
   playMidi: (noteSequence) => ipcRenderer.invoke('play-midi', noteSequence),
   getMidiOutputs: () => ipcRenderer.invoke('get-midi-outputs'),
+  getMidiInstruments: () => ipcRenderer.invoke('get-midi-instruments'),
+  getMidiDrums: () => ipcRenderer.invoke('get-midi-drums'),
+  
+  // Configuration
+  getConfig: () => ipcRenderer.invoke('get-config'),
+  updateConfig: (newConfig) => ipcRenderer.invoke('update-config', newConfig),
   
   // Event listeners
   onSongUpdated: (callback) => {
@@ -19,5 +25,14 @@ contextBridge.exposeInMainWorld('api', {
   },
   onPlaybackProgress: (callback) => {
     ipcRenderer.on('playback-progress', (_, data) => callback(data));
+  },
+  onMcpServerStatus: (callback) => {
+    ipcRenderer.on('mcp-server-status', (_, data) => callback(data));
+  },
+  onOpenSettings: (callback) => {
+    ipcRenderer.on('open-settings', () => callback());
+  },
+  onShowAbout: (callback) => {
+    ipcRenderer.on('show-about', () => callback());
   }
 });

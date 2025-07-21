@@ -12,7 +12,7 @@
   },
   "keywords": ["midi", "mcp", "llm", "music", "magenta", "daw"],
   "author": "",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "dependencies": {
     "easymidi": "^3.1.0",
     "electron": "^37.2.3",

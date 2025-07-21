@@ -31,6 +31,14 @@
       font-size: 24px;
     }
     
+    h3 {
+      margin-top: 20px;
+      margin-bottom: 10px;
+      font-size: 18px;
+      border-bottom: 1px solid #eee;
+      padding-bottom: 5px;
+    }
+    
     .status-bar {
       background-color: #ecf0f1;
       padding: 10px 15px;
@@ -152,6 +160,111 @@
       width: 0%;
       transition: width 0.3s;
     }
+    
+    /* Channel grid styles */
+    .channel-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+    
+    .channel-item {
+      background-color: #f9f9f9;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+    }
+    
+    .drum-channel {
+      background-color: #ffe6e6;
+      border-color: #ffb3b3;
+    }
+    
+    .channel-number {
+      font-weight: bold;
+      margin-bottom: 5px;
+      color: #2c3e50;
+    }
+    
+    .channel-instrument {
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+    
+    .channel-program, .channel-notes {
+      font-size: 12px;
+      color: #7f8c8d;
+    }
+    
+    /* Modal styles */
+    .modal {
+      display: none;
+      position: fixed;
+      z-index: 1000;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.5);
+    }
+    
+    .modal-content {
+      background-color: white;
+      margin: 10% auto;
+      padding: 20px;
+      border-radius: 4px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+      max-width: 500px;
+      position: relative;
+    }
+    
+    .modal-header {
+      border-bottom: 1px solid #eee;
+      padding-bottom: 10px;
+      margin-bottom: 15px;
+    }
+    
+    .modal-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+    
+    .close-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 24px;
+      cursor: pointer;
+      color: #95a5a6;
+    }
+    
+    .close-button:hover {
+      color: #7f8c8d;
+    }
+    
+    .form-group {
+      margin-bottom: 15px;
+    }
+    
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    
+    .form-group input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    
+    .form-actions {
+      text-align: right;
+      margin-top: 20px;
+    }
   </style>
 </head>
 <body>
@@ -163,7 +276,7 @@
     <div class="status-bar">
       <div>
         <span class="status-indicator status-active" id="api-status"></span>
-        <span>MCP API: Running on port 3000</span>
+        <span>MCP API: Running on port <span id="mcp-port">3000</span></span>
       </div>
       <div>
         <span class="status-indicator status-active" id="midi-status"></span>
@@ -178,6 +291,9 @@
       </div>
       <div class="note-display" id="note-sequence-display">
         <!-- Note sequence will be displayed here -->
+      </div>
+      <div id="channel-info">
+        <!-- Channel information will be displayed here -->
       </div>
       <div class="controls">
         <button type="button" class="primary" id="play-button" disabled>Play to DAW</button>
@@ -195,6 +311,49 @@
         <p>or</p>
         <button type="button" id="browse-button">Browse Files</button>
         <input type="file" id="file-input" accept=".mid,.midi" style="display: none;">
+      </div>
+    </div>
+  </div>
+  
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Settings</h2>
+        <span class="close-button" id="close-settings">×</span>
+      </div>
+      <form id="settings-form">
+        <div class="form-group">
+          <label for="mcp-port-input">MCP API Port:</label>
+          <input type="number" id="mcp-port-input" min="1024" max="65535" value="3000" required>
+          <small>Port must be between 1024 and 65535</small>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  
+  <!-- About Modal -->
+  <div id="about-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>About MCP MIDI Bridge</h2>
+        <span class="close-button" id="close-about">×</span>
+      </div>
+      <div>
+        <p>MCP MIDI Bridge is an Electron-based desktop application that acts as a bridge between LLM-driven music generation (via the Model Context Protocol, MCP) and any DAW (Digital Audio Workstation) that accepts MIDI input.</p>
+        <p>Version: 1.0.0</p>
+        <p>License: Apache 2.0</p>
+        <p>Features:</p>
+        <ul>
+          <li>MCP API Server for receiving NoteSequence JSON</li>
+          <li>Virtual MIDI output for DAW integration</li>
+          <li>Support for all 16 MIDI channels (Channel 10 reserved for drums)</li>
+          <li>General MIDI instrument support</li>
+          <li>Configurable MCP server port</li>
+        </ul>
       </div>
     </div>
   </div>
