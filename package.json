@@ -1,0 +1,42 @@
+{
+  "name": "mcp-midi",
+  "version": "1.0.0",
+  "description": "This project is an Electron-based desktop application that acts as a bridge between LLM-driven music generation (via the Model Context Protocol, MCP) and any DAW (Digital Audio Workstation) that accepts MIDI input. It enables AI-generated or AI-edited musical content (in Magenta NoteSequence JSON format) to be easily played, recorded, and manipulated in a DAW via a virtual MIDI device.",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "postinstall": "electron-builder install-app-deps",
+    "test-api": "node src/test-mcp-api.js"
+  },
+  "keywords": ["midi", "mcp", "llm", "music", "magenta", "daw"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "easymidi": "^3.1.0",
+    "electron": "^37.2.3",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.mcp.midi",
+    "productName": "MCP MIDI Bridge",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": ["nsis"],
+      "icon": "public/icon.ico"
+    },
+    "extraResources": [
+      {
+        "from": "src/python",
+        "to": "python",
+        "filter": ["**/*", "!venv/**/*"]
+      }
+    ]
+  }
+}
