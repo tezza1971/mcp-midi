@@ -13,260 +13,48 @@ MCP MIDI Bridge is an Electron-based desktop application that acts as a bridge b
 - **Song Cache**: Stores song data for persistence between sessions
 - **User Dashboard**: Simple interface for viewing and playing songs
 - **MIDI Import/Export**: Support for importing and exporting MIDI files (coming soon)
-- **Client Library**: JavaScript client for easy integration with other applications
 
-## Prerequisites
+## Technology Stack
 
-- Node.js (v14 or later)
-- Python 3.8 or later
-- Windows 11 (for the MVP version)
-- A virtual MIDI driver (loopMIDI recommended for Windows)
+- **Electron**: Cross-platform desktop application framework
+- **Next.js**: React framework for the user interface
+- **TypeScript**: Type-safe JavaScript for better development experience
+- **Express**: API server for MCP communication
+- **EasyMIDI**: MIDI interface for virtual device creation
+- **Magenta**: Music generation and manipulation (Python backend)
 
-## Installation
+## Development
 
-1. Clone this repository
+### Prerequisites
 
-```bash
-git clone https://github.com/yourusername/mcp-midi.git
-cd mcp-midi
-```
+- Node.js 18+
+- Python 3.8+ (for Magenta features)
+- npm or yarn
 
-2. Install Node.js dependencies
+### Setup
 
-```bash
-npm install
-```
+1. Clone the repository
+   ```bash
+   git clone https://github.com/yourusername/mcp-midi.git
+   cd mcp-midi
+   ```
 
-3. Set up the Python environment
+2. Install dependencies
+   ```bash
+   npm install
+   ```
 
-```bash
-cd src/python
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-pip install -r ../../requirements.txt
-cd ../..
-```
+3. Start the development server
+   ```bash
+   npm run dev
+   ```
 
-## Setting up Virtual MIDI
-
-For Windows, we recommend using loopMIDI to create virtual MIDI ports:
-
-1. Download and install loopMIDI from [https://www.tobias-erichsen.de/software/loopmidi.html](https://www.tobias-erichsen.de/software/loopmidi.html)
-2. Launch loopMIDI and create a new virtual MIDI port named "MCP MIDI Bridge"
-
-## Running the Application
-
-1. Start the application in development mode:
-
-```bash
-npm run dev
-```
-
-2. The application will start and create a virtual MIDI output port that your DAW can connect to.
-
-3. In your DAW, select "MCP MIDI Bridge" as a MIDI input device.
-
-## Testing the MCP API
-
-You can test the MCP API with the included test script:
-
-```bash
-npm run test-api
-```
-
-This will send a test multi-channel sequence to the application, which you can then play to your DAW.
-
-To specify a different port (if you've changed it in the settings):
-
-```bash
-npm run test-api -- --port=3001
-```
-
-## Using the MCP Client
-
-The project includes a JavaScript client library that makes it easy to interact with the MCP MIDI Bridge from your own applications.
-
-### Basic Client Usage
-
-Run the simple client example:
-
-```bash
-npm run client
-```
-
-This will connect to the MCP server on port 3000 and send a multi-channel sequence.
-
-### Advanced Client Example
-
-Run the more advanced example with chord progressions and melodies:
-
-```bash
-npm run example
-```
-
-### Using the Client in Your Own Code
-
-```javascript
-const McpMidiClient = require('./src/mcp-client');
-
-async function example() {
-  // Create a client
-  const client = new McpMidiClient({ port: 3000 });
-  
-  // Get the current song
-  const currentSong = await client.getCurrentSong();
-  
-  // Create a simple sequence
-  const sequence = {
-    notes: [
-      { pitch: 60, startTime: 0.0, endTime: 0.5, velocity: 80, instrument: 0, program: 0 },
-      { pitch: 64, startTime: 0.5, endTime: 1.0, velocity: 80, instrument: 0, program: 0 },
-      { pitch: 67, startTime: 1.0, endTime: 1.5, velocity: 80, instrument: 0, program: 0 }
-    ],
-    tempos: [{ time: 0, qpm: 120 }],
-    timeSignatures: [{ time: 0, numerator: 4, denominator: 4 }],
-    totalTime: 1.5
-  };
-  
-  // Send the sequence to the MCP server
-  const response = await client.sendNoteSequence(sequence);
-  console.log('Sequence sent successfully:', response);
-}
-
-example();
-```
-
-## Multi-Channel MIDI Support
-
-The application supports all 16 MIDI channels according to the General MIDI standard:
-
-- Channels 1-9 and 11-16 (0-8 and 10-15 in zero-indexed notation) can be used for melodic instruments
-- Channel 10 (9 in zero-indexed notation) is reserved for drums and percussion
-
-When creating NoteSequence JSON, you can specify the channel using the `instrument` property (0-15) and the instrument sound using the `program` property (0-127).
-
-Example for a piano note on channel 1:
-```json
-{
-  "pitch": 60,
-  "startTime": 0,
-  "endTime": 0.5,
-  "velocity": 80,
-  "instrument": 0,
-  "program": 0
-}
-```
-
-Example for a drum note on channel 10:
-```json
-{
-  "pitch": 36,
-  "startTime": 0,
-  "endTime": 0.1,
-  "velocity": 100,
-  "instrument": 9,
-  "program": 0,
-  "isDrum": true
-}
-```
-
-## MCP API Documentation
-
-The application exposes an HTTP API for LLMs to interact with:
-
-- **POST /api/song**: Send a NoteSequence JSON to update the current song
-- **GET /api/song**: Get the current song as NoteSequence JSON
-- **GET /api/instruments**: Get information about General MIDI instruments
-- **GET /api/drums**: Get information about General MIDI drum kits
-
-Example NoteSequence JSON format:
-
-```json
-{
-  "notes": [
-    {
-      "pitch": 60,
-      "startTime": 0,
-      "endTime": 0.5,
-      "velocity": 80,
-      "instrument": 0,
-      "program": 0
-    },
-    {
-      "pitch": 62,
-      "startTime": 0.5,
-      "endTime": 1.0,
-      "velocity": 80,
-      "instrument": 0,
-      "program": 0
-    }
-  ],
-  "tempos": [
-    {
-      "time": 0,
-      "qpm": 120
-    }
-  ],
-  "timeSignatures": [
-    {
-      "time": 0,
-      "numerator": 4,
-      "denominator": 4
-    }
-  ],
-  "totalTime": 1.0
-}
-```
-
-## Configurable Port
-
-You can change the MCP API server port in the application settings (File > Settings). This allows you to run multiple instances of the application on different ports, each with its own virtual MIDI output.
-
-## Project Structure
-
-```
-mcp-midi/
-├── src/
-│   ├── main/           # Electron main process
-│   ├── renderer/       # Electron renderer process (UI)
-│   ├── common/         # Shared code between main and renderer
-│   ├── python/         # Python backend with Magenta integration
-│   ├── mcp-client.js   # Client library for MCP API
-│   └── example-client.js # Example usage of the client library
-├── public/             # Static assets
-├── song_cache/         # For storing song data
-├── package.json        # Node.js dependencies and scripts
-└── requirements.txt    # Python dependencies
-```
-
-## Building for Production
-
-To build the application for production:
+### Build
 
 ```bash
 npm run build
 ```
 
-This will create distributable packages in the `dist` directory.
-
-## Development Roadmap
-
-- [x] Basic MCP API server
-- [x] Virtual MIDI output
-- [x] Song caching system
-- [x] Simple user interface
-- [x] Multi-channel MIDI support
-- [x] Configurable MCP server port
-- [x] JavaScript client library
-- [ ] MIDI file import/export
-- [ ] Piano roll visualization
-- [ ] DAW sync via MIDI clock
-- [ ] Multi-platform support (macOS, Linux)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
 ## License
 
-Apache License 2.0
+Apache 2.0

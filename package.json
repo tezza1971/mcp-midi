@@ -2,26 +2,52 @@
   "name": "mcp-midi",
   "version": "1.0.0",
   "description": "This project is an Electron-based desktop application that acts as a bridge between LLM-driven music generation (via the Model Context Protocol, MCP) and any DAW (Digital Audio Workstation) that accepts MIDI input. It enables AI-generated or AI-edited musical content (in Magenta NoteSequence JSON format) to be easily played, recorded, and manipulated in a DAW via a virtual MIDI device.",
-  "main": "src/main/main.js",
+  "main": "dist/main/main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron . --dev",
-    "build": "electron-builder",
+    "dev": "concurrently -k \"npm run dev:next\" \"npm run dev:electron\"",
+    "dev:next": "next dev",
+    "dev:electron": "tsc -p electron-tsconfig.json && electron .",
+    "build": "next build && tsc -p electron-tsconfig.json && electron-builder",
+    "start": "next start",
+    "lint": "next lint",
     "postinstall": "electron-builder install-app-deps",
-    "test-api": "node src/test-mcp-api.js",
-    "client": "node src/mcp-client.js",
-    "example": "node src/example-client.js"
+    "test-api": "ts-node src/test-mcp-api.ts",
+    "client": "ts-node src/mcp-client.ts",
+    "example": "ts-node src/example-client.ts"
   },
-  "keywords": ["midi", "mcp", "llm", "music", "magenta", "daw"],
+  "keywords": [
+    "midi",
+    "mcp",
+    "llm",
+    "music",
+    "magenta",
+    "daw"
+  ],
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
     "easymidi": "^3.1.0",
     "electron": "^37.2.3",
-    "express": "^5.1.0"
+    "electron-is-dev": "^2.0.0",
+    "express": "^5.1.0",
+    "next": "^14.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "electron-builder": "^26.0.12"
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.11.19",
+    "@types/react": "^18.2.55",
+    "@types/react-dom": "^18.2.19",
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "electron-builder": "^26.0.12",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.1.0",
+    "postcss": "^8.4.35",
+    "tailwindcss": "^3.4.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
   },
   "build": {
     "appId": "com.mcp.midi",
@@ -30,15 +56,25 @@
       "output": "dist"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "public/icon.ico"
     },
     "extraResources": [
       {
         "from": "src/python",
         "to": "python",
-        "filter": ["**/*", "!venv/**/*"]
+        "filter": [
+          "**/*",
+          "!venv/**/*"
+        ]
       }
+    ],
+    "files": [
+      "dist/**/*",
+      ".next/**/*",
+      "node_modules/**/*"
     ]
   }
 }
