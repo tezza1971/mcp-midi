@@ -5,7 +5,7 @@ import { NoteSequence, SaveSongResult, SongInfo } from '../types';
 /**
  * SongCache manages the storage and retrieval of NoteSequence JSON files
  */
-class SongCache {
+export class SongCache {
   private cacheDir: string;
 
   /**
@@ -88,7 +88,7 @@ class SongCache {
       return null;
     }
   }
-  
+
   /**
    * Get a list of all songs in the cache
    * @returns {SongInfo[]} - Array of song information objects
@@ -99,7 +99,7 @@ class SongCache {
         .filter(file => file.startsWith('song_') && file.endsWith('.json'))
         .sort()
         .reverse();
-      
+
       return files.map(file => {
         const filepath = path.join(this.cacheDir, file);
         const stats = fs.statSync(filepath);
@@ -163,5 +163,3 @@ class SongCache {
     }
   }
 }
-
-export default SongCache;

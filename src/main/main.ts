@@ -1,397 +1,398 @@
-import { app, BrowserWindow, ipcMain, Menu, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, MenuItemConstructorOptions } from 'electron';
 import path from 'path';
-import express, { Request, Response } from 'express';
 import fs from 'fs';
-import isDev from 'electron-is-dev';
+import express from 'express';
+import cors from 'cors';
+import { ChildProcess } from 'child_process';
 
-// Import our custom modules
-import MidiManager from '../common/midi-manager';
-import SongCache from '../common/song-cache';
+import { MidiManager } from '../common/midi-manager';
+import { SongCache } from '../common/song-cache';
 import { startPythonServer } from '../common/python-server';
-import { AppConfig, ConfigUpdateResult, McpServerStatus, NoteSequence, PlayMidiResult, PlaybackProgress, SaveSongResult } from '../types';
+import { 
+  NoteSequence, 
+  AppConfig, 
+  SongInfo, 
+  MidiFileResult, 
+  ConfigUpdateResult, 
+  McpServerStatus,
+  PlayMidiResult,
+  SaveSongResult
+} from '../types';
 
-// Keep a global reference of the window object to prevent garbage collection
+// Global variables
 let mainWindow: BrowserWindow | null = null;
+let midiManager: MidiManager;
+let songCache: SongCache;
+let mcpServer: express.Application;
+let mcpServerInstance: any = null;
+let pythonServer: { process: ChildProcess; url: string } | null = null;
 
-// Path to the song cache directory
-const SONG_CACHE_DIR = path.join(app.getPath('userData'), 'song_cache');
-
-// Path to the config file
-const CONFIG_FILE = path.join(app.getPath('userData'), 'config.json');
-
-// Default configuration
+// Configuration
 let config: AppConfig = {
-  mcpPort: 3000,
+  mcpPort: 8002,
   pythonPort: 5000,
   lastUsedSong: null
 };
 
-// Global instances of our managers
-let songCache: SongCache;
-let midiManager: MidiManager;
-let pythonServer: ReturnType<typeof startPythonServer> | null = null;
-let mcpServer: express.Application;
-let mcpServerInstance: ReturnType<typeof mcpServer.listen> | null = null;
+const isDev = process.env.NODE_ENV === 'development';
 
-// Load configuration
-function loadConfig(): void {
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      const data = fs.readFileSync(CONFIG_FILE, 'utf8');
-      const loadedConfig = JSON.parse(data) as Partial<AppConfig>;
-      config = { ...config, ...loadedConfig };
-      console.log('Loaded configuration:', config);
-    } else {
-      saveConfig();
-    }
-  } catch (error) {
-    console.error('Error loading configuration:', error);
-  }
-}
-
-// Save configuration
-function saveConfig(): void {
-  try {
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-    console.log('Saved configuration:', config);
-  } catch (error) {
-    console.error('Error saving configuration:', error);
-  }
-}
-
-// Initialize Express server for MCP API
-function initMcpApi(): void {
-  mcpServer = express();
-  mcpServer.use(express.json({ limit: '10mb' }));
-  
-  // Endpoint to receive NoteSequence JSON from LLMs
-  mcpServer.post('/api/song', (req: Request, res: Response) => {
-    try {
-      const noteSequence = req.body as NoteSequence;
-      
-      // Save to cache
-      const result = songCache.saveSong(noteSequence);
-      
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
-      }
-      
-      // Update last used song in config
-      config.lastUsedSong = result.filename || null;
-      saveConfig();
-      
-      // Notify the renderer process about the new song
-      if (mainWindow) {
-        mainWindow.webContents.send('song-updated', result);
-      }
-      
-      res.status(200).json({ success: true, timestamp: result.timestamp });
-    } catch (error) {
-      console.error('Error processing song:', error);
-      res.status(500).json({ error: 'Failed to process song' });
-    }
-  });
-  
-  // Get current song
-  mcpServer.get('/api/song', (_req: Request, res: Response) => {
-    try {
-      const latestSong = songCache.getLatestSong();
-      
-      if (!latestSong) {
-        return res.status(404).json({ error: 'No songs found' });
-      }
-      
-      res.status(200).json(latestSong);
-    } catch (error) {
-      console.error('Error retrieving song:', error);
-      res.status(500).json({ error: 'Failed to retrieve song' });
-    }
-  });
-  
-  // Get MIDI instrument information
-  mcpServer.get('/api/instruments', (_req: Request, res: Response) => {
-    try {
-      const instruments = midiManager.getGeneralMidiInstruments();
-      res.status(200).json(instruments);
-    } catch (error) {
-      console.error('Error retrieving instruments:', error);
-      res.status(500).json({ error: 'Failed to retrieve instruments' });
-    }
-  });
-  
-  // Get MIDI drum kit information
-  mcpServer.get('/api/drums', (_req: Request, res: Response) => {
-    try {
-      const drums = midiManager.getGeneralMidiDrumKits();
-      res.status(200).json(drums);
-    } catch (error) {
-      console.error('Error retrieving drum kits:', error);
-      res.status(500).json({ error: 'Failed to retrieve drum kits' });
-    }
-  });
-  
-  // Start the server
-  const PORT = config.mcpPort;
-  mcpServerInstance = mcpServer.listen(PORT, () => {
-    console.log(`MCP API server running on port ${PORT}`);
-    if (mainWindow) {
-      const status: McpServerStatus = { running: true, port: PORT };
-      mainWindow.webContents.send('mcp-server-status', status);
-    }
-  });
-}
-
-// Create the main application window
 function createWindow(): void {
+  // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      preload: path.join(__dirname, 'preload.js')
-    }
+      preload: path.join(__dirname, 'preload.js'),
+    },
   });
-  
-  // Load the Next.js app
-  const url = isDev
-    ? 'http://localhost:3000' // Dev server URL
-    : `file://${path.join(__dirname, '../../.next/index.html')}`; // Production build path
-  
-  mainWindow.loadURL(url);
-  
-  // Open DevTools in development mode
+
+  // Load the app
   if (isDev) {
+    mainWindow.loadURL('http://localhost:8080');
     mainWindow.webContents.openDevTools();
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
-  
-  // Create application menu
-  createAppMenu();
-  
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
+// Initialize core components
+function initializeComponents(): void {
+  try {
+    // Initialize MIDI manager
+    midiManager = new MidiManager();
+    console.log('MIDI Manager initialized');
+
+    // Initialize song cache
+    const cacheDir = path.join(app.getPath('userData'), 'song_cache');
+    songCache = new SongCache(cacheDir);
+    console.log('Song Cache initialized');
+
+    // Start Python server
+    if (isDev) {
+      try {
+        pythonServer = startPythonServer(true);
+        console.log('Python server started');
+      } catch (error) {
+        console.error('Failed to start Python server:', error);
+      }
+    }
+
+    // Initialize MCP server
+    initializeMcpServer();
+  } catch (error) {
+    console.error('Failed to initialize components:', error);
+  }
+}
+
+// Initialize MCP API server
+function initializeMcpServer(): void {
+  mcpServer = express();
+  mcpServer.use(cors());
+  mcpServer.use(express.json({ limit: '10mb' }));
+
+  // Health check endpoint
+  mcpServer.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Receive NoteSequence from LLM
+  mcpServer.post('/song', (req, res) => {
+    try {
+      const noteSequence: NoteSequence = req.body;
+      
+      // Validate the note sequence
+      if (!noteSequence || !noteSequence.notes) {
+        return res.status(400).json({ error: 'Invalid NoteSequence format' });
+      }
+
+      // Save to cache
+      const saveResult = songCache.saveSong(noteSequence);
+      
+      if (saveResult.success) {
+        // Notify the renderer process
+        if (mainWindow) {
+          mainWindow.webContents.send('song-updated', noteSequence);
+        }
+
+        res.json({
+          success: true,
+          message: 'Song received and cached',
+          filename: saveResult.filename,
+          timestamp: saveResult.timestamp
+        });
+      } else {
+        res.status(500).json({ error: saveResult.error });
+      }
+    } catch (error) {
+      console.error('Error processing song:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get current song
+  mcpServer.get('/song', (req, res) => {
+    try {
+      const latestSong = songCache.getLatestSong();
+      if (latestSong) {
+        res.json(latestSong);
+      } else {
+        res.status(404).json({ error: 'No songs found' });
+      }
+    } catch (error) {
+      console.error('Error getting song:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Get song list
+  mcpServer.get('/songs', (req, res) => {
+    try {
+      const songs = songCache.getSongList();
+      res.json(songs);
+    } catch (error) {
+      console.error('Error getting song list:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Play song endpoint
+  mcpServer.post('/play', async (req, res) => {
+    try {
+      const noteSequence: NoteSequence = req.body;
+      
+      if (!noteSequence || !noteSequence.notes) {
+        return res.status(400).json({ error: 'Invalid NoteSequence format' });
+      }
+
+      const result = await midiManager.playNoteSequence(noteSequence);
+      res.json(result);
+    } catch (error) {
+      console.error('Error playing song:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  // Start the server
+  try {
+    mcpServerInstance = mcpServer.listen(config.mcpPort, () => {
+      console.log(`MCP API server running on port ${config.mcpPort}`);
+    });
+  } catch (error) {
+    console.error('Failed to start MCP server:', error);
+  }
+}
+
 // Create application menu
-function createAppMenu(): void {
-  const template = [
+function createMenu(): void {
+  const template: MenuItemConstructorOptions[] = [
     {
       label: 'File',
       submenu: [
         {
-          label: 'Settings',
+          label: 'Import MIDI',
           click: () => {
-            if (mainWindow) {
-              mainWindow.webContents.send('open-settings');
-            }
+            // TODO: Implement MIDI import dialog
           }
         },
         { type: 'separator' },
-        { role: 'quit' as const }
+        { role: 'quit' }
       ]
     },
     {
       label: 'Edit',
       submenu: [
-        { role: 'undo' as const },
-        { role: 'redo' as const },
+        { role: 'undo' },
+        { role: 'redo' },
         { type: 'separator' },
-        { role: 'cut' as const },
-        { role: 'copy' as const },
-        { role: 'paste' as const }
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' }
       ]
     },
     {
       label: 'View',
       submenu: [
-        { role: 'reload' as const },
-        { role: 'forceReload' as const },
-        { role: 'toggleDevTools' as const },
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
         { type: 'separator' },
-        { role: 'resetZoom' as const },
-        { role: 'zoomIn' as const },
-        { role: 'zoomOut' as const },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
         { type: 'separator' },
-        { role: 'togglefullscreen' as const }
+        { role: 'togglefullscreen' }
       ]
     },
     {
-      label: 'MIDI',
+      label: 'Window',
       submenu: [
-        {
-          label: 'Stop All Notes',
-          click: () => {
-            if (midiManager) {
-              midiManager.stopPlayback();
-            }
-          }
-        }
+        { role: 'minimize' },
+        { role: 'close' }
       ]
     },
     {
       label: 'Help',
       submenu: [
         {
-          label: 'About',
+          label: 'About MCP MIDI Bridge',
           click: () => {
             if (mainWindow) {
               mainWindow.webContents.send('show-about');
             }
           }
-        },
-        {
-          label: 'Documentation',
-          click: async () => {
-            await shell.openExternal('https://github.com/yourusername/mcp-midi');
-          }
         }
       ]
     }
   ];
-  
+
   const menu = Menu.buildFromTemplate(template);
   Menu.setApplicationMenu(menu);
 }
 
-// Setup IPC handlers for renderer communication
+// IPC handlers
 function setupIpcHandlers(): void {
-  // Get the current song
-  ipcMain.handle('get-current-song', () => {
-    return songCache.getLatestSong();
-  });
-  
-  // Get the list of songs
-  ipcMain.handle('get-song-list', () => {
-    return songCache.getSongList();
-  });
-  
-  // Play MIDI notes
-  ipcMain.handle('play-midi', async (_event, noteSequence: NoteSequence) => {
-    return await midiManager.playNoteSequence(noteSequence, (progress: PlaybackProgress) => {
-      // Send progress updates to the renderer
-      if (mainWindow) {
-        mainWindow.webContents.send('playback-progress', progress);
-      }
-    });
-  });
-  
-  // Get available MIDI outputs
-  ipcMain.handle('get-midi-outputs', () => {
-    return midiManager.getOutputs();
-  });
-  
-  // Get General MIDI instruments
-  ipcMain.handle('get-midi-instruments', () => {
-    return midiManager.getGeneralMidiInstruments();
-  });
-  
-  // Get General MIDI drum kits
-  ipcMain.handle('get-midi-drums', () => {
-    return midiManager.getGeneralMidiDrumKits();
-  });
-  
-  // Import MIDI file
-  ipcMain.handle('import-midi-file', async (_event, _filePath: string) => {
+  // Get latest song
+  ipcMain.handle('get-latest-song', async (): Promise<NoteSequence | null> => {
     try {
-      // This would use the Python backend to convert MIDI to NoteSequence
-      // For now, we'll return a simple error
-      return { success: false, error: 'MIDI import not implemented yet' };
+      return songCache.getLatestSong();
+    } catch (error) {
+      console.error('Error getting latest song:', error);
+      return null;
+    }
+  });
+
+  // Get song list
+  ipcMain.handle('get-song-list', async (): Promise<SongInfo[]> => {
+    try {
+      return songCache.getSongList();
+    } catch (error) {
+      console.error('Error getting song list:', error);
+      return [];
+    }
+  });
+
+  // Play MIDI
+  ipcMain.handle('play-midi', async (event, noteSequence: NoteSequence): Promise<PlayMidiResult> => {
+    try {
+      return await midiManager.playNoteSequence(noteSequence, (progress) => {
+        if (mainWindow) {
+          mainWindow.webContents.send('playback-progress', progress);
+        }
+      });
+    } catch (error) {
+      console.error('Error playing MIDI:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+  });
+
+  // Stop MIDI
+  ipcMain.handle('stop-midi', async (): Promise<void> => {
+    try {
+      midiManager.stopPlayback();
+    } catch (error) {
+      console.error('Error stopping MIDI:', error);
+    }
+  });
+
+  // Import MIDI file
+  ipcMain.handle('import-midi-file', async (event, filePath: string): Promise<MidiFileResult> => {
+    try {
+      // TODO: Implement MIDI file import using a library like midi-file
+      return { success: false, error: 'MIDI import not yet implemented' };
     } catch (error) {
       console.error('Error importing MIDI file:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
-  
-  // Export MIDI file
-  ipcMain.handle('export-midi-file', async (_event, _noteSequence: NoteSequence, _filePath: string) => {
+
+  // Update configuration
+  ipcMain.handle('update-config', async (event, newConfig: AppConfig): Promise<ConfigUpdateResult> => {
     try {
-      // This would use the Python backend to convert NoteSequence to MIDI
-      // For now, we'll return a simple error
-      return { success: false, error: 'MIDI export not implemented yet' };
-    } catch (error) {
-      console.error('Error exporting MIDI file:', error);
-      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
-    }
-  });
-  
-  // Get application configuration
-  ipcMain.handle('get-config', () => {
-    return config;
-  });
-  
-  // Update application configuration
-  ipcMain.handle('update-config', async (_event, newConfig: Partial<AppConfig>): Promise<ConfigUpdateResult> => {
-    try {
-      // Update config
-      const oldMcpPort = config.mcpPort;
       config = { ...config, ...newConfig };
-      saveConfig();
       
-      // Check if MCP port changed
-      if (oldMcpPort !== config.mcpPort && mcpServerInstance) {
-        // Close the current server
-        mcpServerInstance.close(() => {
-          console.log(`Closed MCP server on port ${oldMcpPort}`);
-          // Restart the server with the new port
-          initMcpApi();
-        });
+      // Save config to file
+      const configPath = path.join(app.getPath('userData'), 'config.json');
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      
+      // Restart MCP server if port changed
+      if (mcpServerInstance && newConfig.mcpPort !== config.mcpPort) {
+        mcpServerInstance.close();
+        config.mcpPort = newConfig.mcpPort;
+        initializeMcpServer();
       }
       
       return { success: true };
     } catch (error) {
-      console.error('Error updating configuration:', error);
+      console.error('Error updating config:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
+
+  // Get MCP server status
+  ipcMain.handle('get-mcp-status', async (): Promise<McpServerStatus> => {
+    return {
+      running: mcpServerInstance !== null,
+      port: config.mcpPort
+    };
+  });
 }
 
-// App lifecycle events
-app.on('ready', () => {
-  // Load configuration
+// Load configuration
+function loadConfig(): void {
+  try {
+    const configPath = path.join(app.getPath('userData'), 'config.json');
+    if (fs.existsSync(configPath)) {
+      const configData = fs.readFileSync(configPath, 'utf8');
+      config = { ...config, ...JSON.parse(configData) };
+    }
+  } catch (error) {
+    console.error('Error loading config:', error);
+  }
+}
+
+// App event handlers
+app.whenReady().then(() => {
   loadConfig();
-  
-  // Initialize our managers
-  songCache = new SongCache(SONG_CACHE_DIR);
-  midiManager = new MidiManager();
-  
-  // Start the Python server if needed
-  // Commented out for now as we're not using it in the MVP
-  // pythonServer = startPythonServer(isDev);
-  
-  // Create the window and set up handlers
+  initializeComponents();
   createWindow();
+  createMenu();
   setupIpcHandlers();
-  initMcpApi();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow();
+    }
+  });
 });
 
 app.on('window-all-closed', () => {
-  // Clean up resources
-  if (midiManager) {
-    midiManager.cleanup();
+  // Clean up
+  if (mcpServerInstance) {
+    mcpServerInstance.close();
   }
   
-  // Quit the app on all platforms except macOS
+  if (pythonServer?.process) {
+    pythonServer.process.kill();
+  }
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-app.on('activate', () => {
-  // On macOS, recreate the window when the dock icon is clicked
-  if (mainWindow === null) {
-    createWindow();
-  }
-});
-
-app.on('quit', () => {
-  // Final cleanup
-  if (midiManager) {
-    midiManager.cleanup();
+app.on('before-quit', () => {
+  // Clean up resources
+  if (mcpServerInstance) {
+    mcpServerInstance.close();
   }
   
-  // Kill the Python server if it's running
-  if (pythonServer && pythonServer.process) {
+  if (pythonServer?.process) {
     pythonServer.process.kill();
   }
 });

@@ -26,7 +26,7 @@ export default function MidiImport({ onImport }: MidiImportProps) {
       if (file.name.endsWith('.mid') || file.name.endsWith('.midi')) {
         // In a real Electron app, we'd have access to the file.path
         // For now, we'll just pass the file name as a placeholder
-        onImport(file.path);
+        onImport((file as any).path);
       } else {
         alert('Please drop a MIDI file (.mid or .midi)');
       }
@@ -42,7 +42,7 @@ export default function MidiImport({ onImport }: MidiImportProps) {
       const file = e.target.files[0];
       // In a real Electron app, we'd have access to the file.path
       // For now, we'll just pass the file name as a placeholder
-      onImport(file.path);
+      onImport((file as any).path);
     }
   };
 

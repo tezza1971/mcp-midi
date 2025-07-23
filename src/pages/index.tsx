@@ -25,22 +25,22 @@ export default function Home() {
     const init = async () => {
       try {
         // Load configuration
-        const config = await window.api.getConfig();
+        const config = await window.electronAPI.getConfig();
         setAppConfig(config);
 
         // Load MIDI instrument data
-        const instruments = await window.api.getMidiInstruments();
+        const instruments = await window.electronAPI.getMidiInstruments();
         setMidiInstruments(instruments);
 
-        const drums = await window.api.getMidiDrums();
+        const drums = await window.electronAPI.getMidiDrums();
         setMidiDrums(drums);
 
         // Check MIDI outputs
-        const outputs = await window.api.getMidiOutputs();
+        const outputs = await window.electronAPI.getMidiOutputs();
         setMidiOutputs(outputs);
 
         // Try to load the current song
-        const song = await window.api.getCurrentSong();
+        const song = await window.electronAPI.getCurrentSong();
         if (song) {
           setCurrentSong(song);
         }
@@ -55,33 +55,33 @@ export default function Home() {
   // Set up event listeners
   useEffect(() => {
     // Song updated event
-    window.api.onSongUpdated((data: SaveSongResult) => {
+    window.electronAPI.onSongUpdated((data: SaveSongResult) => {
       console.log('Song updated:', data);
       // Reload the current song
-      window.api.getCurrentSong().then(song => {
+      window.electronAPI.getCurrentSong().then(song => {
         setCurrentSong(song);
       });
     });
 
     // Playback progress event
-    window.api.onPlaybackProgress((data: PlaybackProgress) => {
+    window.electronAPI.onPlaybackProgress((data: PlaybackProgress) => {
       const { current, total } = data;
       const percentage = (current / total) * 100;
       setPlaybackProgress(percentage);
     });
 
     // MCP server status event
-    window.api.onMcpServerStatus((data: McpServerStatus) => {
+    window.electronAPI.onMcpServerStatus((data: McpServerStatus) => {
       setApiStatus(data);
     });
 
     // Open settings event
-    window.api.onOpenSettings(() => {
+    window.electronAPI.onOpenSettings(() => {
       setIsSettingsOpen(true);
     });
 
     // Show about event
-    window.api.onShowAbout(() => {
+    window.electronAPI.onShowAbout(() => {
       setIsAboutOpen(true);
     });
   }, []);
@@ -94,7 +94,7 @@ export default function Home() {
     setPlaybackProgress(0);
 
     try {
-      const result = await window.api.playMidi(currentSong);
+      const result = await window.electronAPI.playMidi(currentSong);
       if (!result.success) {
         console.error('Failed to play MIDI:', result.error);
       }
@@ -118,7 +118,7 @@ export default function Home() {
   // Handle importing MIDI
   const handleMidiFile = async (filePath: string) => {
     try {
-      const result = await window.api.importMidiFile(filePath);
+      const result = await window.electronAPI.importMidiFile(filePath);
       if (result.success && result.noteSequence) {
         setCurrentSong(result.noteSequence);
       } else {
@@ -133,7 +133,7 @@ export default function Home() {
   // Handle updating configuration
   const handleUpdateConfig = async (newConfig: Partial<AppConfig>) => {
     try {
-      const result = await window.api.updateConfig(newConfig);
+      const result = await window.electronAPI.updateConfig(newConfig);
       if (result.success) {
         setAppConfig(prev => ({ ...prev, ...newConfig }));
         setIsSettingsOpen(false);

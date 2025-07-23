@@ -2,24 +2,14 @@ import { AppConfig, ConfigUpdateResult, McpServerStatus, MidiFileResult, NoteSeq
 
 declare global {
   interface Window {
-    api: {
-      // Song management
+    electronAPI: {
       getSongList: () => Promise<SongInfo[]>;
-      getCurrentSong: () => Promise<NoteSequence | null>;
-      importMidiFile: (filePath: string) => Promise<MidiFileResult>;
-      exportMidiFile: (noteSequence: NoteSequence, filePath: string) => Promise<MidiFileResult>;
-      
-      // MIDI functionality
+      getLatestSong: () => Promise<NoteSequence | null>;
       playMidi: (noteSequence: NoteSequence) => Promise<PlayMidiResult>;
-      getMidiOutputs: () => Promise<string[]>;
-      getMidiInstruments: () => Promise<Record<number, { name: string, family: string }>>;
-      getMidiDrums: () => Promise<Record<number, { name: string }>>;
-      
-      // Configuration
-      getConfig: () => Promise<AppConfig>;
+      stopMidi: () => Promise<void>;
+      importMidiFile: (filePath: string) => Promise<MidiFileResult>;
       updateConfig: (newConfig: Partial<AppConfig>) => Promise<ConfigUpdateResult>;
-      
-      // Event listeners
+      getMcpStatus: () => Promise<McpServerStatus>;
       onSongUpdated: (callback: (data: SaveSongResult) => void) => void;
       onPlaybackProgress: (callback: (data: PlaybackProgress) => void) => void;
       onMcpServerStatus: (callback: (data: McpServerStatus) => void) => void;
