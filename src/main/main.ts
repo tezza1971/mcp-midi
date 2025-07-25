@@ -68,19 +68,27 @@ function initializeComponents(): void {
     midiManager = new MidiManager();
     console.log('MIDI Manager initialized');
 
+    // Listen for MIDI connection status events
+    midiManager.on('midi-connection-status', (status) => {
+      if (mainWindow) {
+        mainWindow.webContents.send('midi-connection-status', status);
+      }
+    });
+
     // Initialize song cache
     const cacheDir = path.join(app.getPath('userData'), 'song_cache');
     songCache = new SongCache(cacheDir);
     console.log('Song Cache initialized');
 
-    // Start Python server
+    // Start Python server (disabled by default, enable if needed)
     if (isDev) {
-      try {
-        pythonServer = startPythonServer(true);
-        console.log('Python server started');
-      } catch (error) {
-        console.error('Failed to start Python server:', error);
-      }
+      // Commented out to avoid error if script missing
+      // try {
+      //   pythonServer = startPythonServer(true);
+      //   console.log('Python server started');
+      // } catch (error) {
+      //   console.error('Failed to start Python server:', error);
+      // }
     }
 
     // Initialize MCP server
@@ -315,18 +323,18 @@ function setupIpcHandlers(): void {
   ipcMain.handle('update-config', async (event, newConfig: AppConfig): Promise<ConfigUpdateResult> => {
     try {
       config = { ...config, ...newConfig };
-      
+
       // Save config to file
       const configPath = path.join(app.getPath('userData'), 'config.json');
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-      
+
       // Restart MCP server if port changed
       if (mcpServerInstance && newConfig.mcpPort !== config.mcpPort) {
         mcpServerInstance.close();
         config.mcpPort = newConfig.mcpPort;
         initializeMcpServer();
       }
-      
+
       return { success: true };
     } catch (error) {
       console.error('Error updating config:', error);
@@ -340,6 +348,61 @@ function setupIpcHandlers(): void {
       running: mcpServerInstance !== null,
       port: config.mcpPort
     };
+  });
+
+  // Get current song (alias for get-latest-song)
+  ipcMain.handle('get-current-song', async (): Promise<NoteSequence | null> => {
+    try {
+      return songCache.getLatestSong();
+    } catch (error) {
+      console.error('Error getting current song:', error);
+      return null;
+    }
+  });
+
+  // Get configuration
+  ipcMain.handle('get-config', async (): Promise<AppConfig> => {
+    return config;
+  });
+
+  // Get MIDI outputs
+  ipcMain.handle('get-midi-outputs', async (): Promise<string[]> => {
+    try {
+      return midiManager.getOutputs();
+    } catch (error) {
+      console.error('Error getting MIDI outputs:', error);
+      return [];
+    }
+  });
+
+  // Get MIDI instruments
+  ipcMain.handle('get-midi-instruments', async (): Promise<Record<number, { name: string, family: string }>> => {
+    try {
+      const instruments = midiManager.getGeneralMidiInstruments();
+      const result: Record<number, { name: string, family: string }> = {};
+      instruments.forEach((instrument, index) => {
+        result[index] = { name: instrument.name, family: 'General MIDI' };
+      });
+      return result;
+    } catch (error) {
+      console.error('Error getting MIDI instruments:', error);
+      return {};
+    }
+  });
+
+  // Get MIDI drums
+  ipcMain.handle('get-midi-drums', async (): Promise<Record<number, { name: string }>> => {
+    try {
+      const drums = midiManager.getGeneralMidiDrums();
+      const result: Record<number, { name: string }> = {};
+      drums.forEach((drum, index) => {
+        result[index + 35] = { name: drum.name }; // GM drums start at note 35
+      });
+      return result;
+    } catch (error) {
+      console.error('Error getting MIDI drums:', error);
+      return {};
+    }
   });
 }
 
@@ -376,11 +439,15 @@ app.on('window-all-closed', () => {
   if (mcpServerInstance) {
     mcpServerInstance.close();
   }
-  
+
   if (pythonServer?.process) {
-    pythonServer.process.kill();
+    try {
+      pythonServer.process.kill();
+    } catch (error) {
+      console.warn('Failed to kill Python server process:', error);
+    }
   }
-  
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -391,8 +458,12 @@ app.on('before-quit', () => {
   if (mcpServerInstance) {
     mcpServerInstance.close();
   }
-  
+
   if (pythonServer?.process) {
-    pythonServer.process.kill();
+    try {
+      pythonServer.process.kill();
+    } catch (error) {
+      console.warn('Failed to kill Python server process:', error);
+    }
   }
 });

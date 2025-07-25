@@ -4,13 +4,16 @@ import { NoteSequence, PlayMidiResult, PlaybackProgress, MidiInstrument, MidiDru
 /**
  * MIDI Manager for handling virtual MIDI devices and multi-channel support
  */
-export class MidiManager {
+import { EventEmitter } from 'events';
+
+export class MidiManager extends EventEmitter {
   private virtualOutput: easymidi.Output | null = null;
   private isPlaying: boolean = false;
   private activeChannels: Set<number> = new Set();
   private currentPlaybackTimeout: NodeJS.Timeout | null = null;
 
   constructor() {
+    super();
     this.initialize();
   }
 
@@ -31,8 +34,12 @@ export class MidiManager {
         this.virtualOutput = new easymidi.Output('MCP MIDI Bridge');
         console.log('Connected to existing virtual MIDI output: MCP MIDI Bridge');
       }
+
+      // Notify listeners about connection
+      this.emit('midi-connection-status', { connected: true, deviceName: 'MCP MIDI Bridge' });
     } catch (error) {
       console.error('Failed to initialize MIDI:', error);
+      this.emit('midi-connection-status', { connected: false, error });
     }
   }
 

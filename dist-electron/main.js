@@ -5,9 +5,10 @@ const fs = require("fs");
 const express = require("express");
 const cors = require("cors");
 const easymidi = require("easymidi");
-const child_process = require("child_process");
-class MidiManager {
+const events = require("events");
+class MidiManager extends events.EventEmitter {
   constructor() {
+    super();
     this.virtualOutput = null;
     this.isPlaying = false;
     this.activeChannels = /* @__PURE__ */ new Set();
@@ -28,8 +29,10 @@ class MidiManager {
         this.virtualOutput = new easymidi.Output("MCP MIDI Bridge");
         console.log("Connected to existing virtual MIDI output: MCP MIDI Bridge");
       }
+      this.emit("midi-connection-status", { connected: true, deviceName: "MCP MIDI Bridge" });
     } catch (error) {
       console.error("Failed to initialize MIDI:", error);
+      this.emit("midi-connection-status", { connected: false, error });
     }
   }
   /**
@@ -611,41 +614,11 @@ class SongCache {
     }
   }
 }
-function startPythonServer(isDev2 = false) {
-  var _a, _b;
-  let pythonPath;
-  let scriptPath;
-  if (isDev2) {
-    pythonPath = path.join(__dirname, "..", "python", "venv", "Scripts", "python.exe");
-    scriptPath = path.join(__dirname, "..", "python", "magenta_wrapper.py");
-  } else {
-    pythonPath = path.join(process.resourcesPath, "python", "venv", "Scripts", "python.exe");
-    scriptPath = path.join(process.resourcesPath, "python", "magenta_wrapper.py");
-  }
-  if (!fs.existsSync(scriptPath)) {
-    throw new Error(`Python script not found at: ${scriptPath}`);
-  }
-  const pythonProcess = child_process.spawn(pythonPath, [scriptPath, "server", "--port", "5000"]);
-  (_a = pythonProcess.stdout) == null ? void 0 : _a.on("data", (data) => {
-    console.log(`Python server: ${data}`);
-  });
-  (_b = pythonProcess.stderr) == null ? void 0 : _b.on("data", (data) => {
-    console.error(`Python server error: ${data}`);
-  });
-  pythonProcess.on("close", (code) => {
-    console.log(`Python server exited with code ${code}`);
-  });
-  return {
-    process: pythonProcess,
-    url: "http://localhost:5000"
-  };
-}
 let mainWindow = null;
 let midiManager;
 let songCache;
 let mcpServer;
 let mcpServerInstance = null;
-let pythonServer = null;
 let config = {
   mcpPort: 8002,
   pythonPort: 5e3,
@@ -676,16 +649,15 @@ function initializeComponents() {
   try {
     midiManager = new MidiManager();
     console.log("MIDI Manager initialized");
+    midiManager.on("midi-connection-status", (status) => {
+      if (mainWindow) {
+        mainWindow.webContents.send("midi-connection-status", status);
+      }
+    });
     const cacheDir = path.join(electron.app.getPath("userData"), "song_cache");
     songCache = new SongCache(cacheDir);
     console.log("Song Cache initialized");
     if (isDev) {
-      try {
-        pythonServer = startPythonServer(true);
-        console.log("Python server started");
-      } catch (error) {
-        console.error("Failed to start Python server:", error);
-      }
     }
     initializeMcpServer();
   } catch (error) {
@@ -896,6 +868,51 @@ function setupIpcHandlers() {
       port: config.mcpPort
     };
   });
+  electron.ipcMain.handle("get-current-song", async () => {
+    try {
+      return songCache.getLatestSong();
+    } catch (error) {
+      console.error("Error getting current song:", error);
+      return null;
+    }
+  });
+  electron.ipcMain.handle("get-config", async () => {
+    return config;
+  });
+  electron.ipcMain.handle("get-midi-outputs", async () => {
+    try {
+      return midiManager.getOutputs();
+    } catch (error) {
+      console.error("Error getting MIDI outputs:", error);
+      return [];
+    }
+  });
+  electron.ipcMain.handle("get-midi-instruments", async () => {
+    try {
+      const instruments = midiManager.getGeneralMidiInstruments();
+      const result = {};
+      instruments.forEach((instrument, index) => {
+        result[index] = { name: instrument.name, family: "General MIDI" };
+      });
+      return result;
+    } catch (error) {
+      console.error("Error getting MIDI instruments:", error);
+      return {};
+    }
+  });
+  electron.ipcMain.handle("get-midi-drums", async () => {
+    try {
+      const drums = midiManager.getGeneralMidiDrums();
+      const result = {};
+      drums.forEach((drum, index) => {
+        result[index + 35] = { name: drum.name };
+      });
+      return result;
+    } catch (error) {
+      console.error("Error getting MIDI drums:", error);
+      return {};
+    }
+  });
 }
 function loadConfig() {
   try {
@@ -924,9 +941,6 @@ electron.app.on("window-all-closed", () => {
   if (mcpServerInstance) {
     mcpServerInstance.close();
   }
-  if (pythonServer == null ? void 0 : pythonServer.process) {
-    pythonServer.process.kill();
-  }
   if (process.platform !== "darwin") {
     electron.app.quit();
   }
@@ -934,9 +948,6 @@ electron.app.on("window-all-closed", () => {
 electron.app.on("before-quit", () => {
   if (mcpServerInstance) {
     mcpServerInstance.close();
-  }
-  if (pythonServer == null ? void 0 : pythonServer.process) {
-    pythonServer.process.kill();
   }
 });
 //# sourceMappingURL=main.js.map

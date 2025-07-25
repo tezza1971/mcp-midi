@@ -1,4 +1,7 @@
 import { NoteSequence } from '../types';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/Card';
+import { Button } from './ui/Button';
+import { Play, Download, Music } from 'lucide-react';
 
 interface SongDisplayProps {
   currentSong: NoteSequence | null;
@@ -21,10 +24,20 @@ export default function SongDisplay({
 }: SongDisplayProps) {
   if (!currentSong) {
     return (
-      <div className="bg-white p-6 rounded-md shadow-md mb-5">
-        <h2 className="text-xl font-semibold border-b pb-2 mb-4">Current Song</h2>
-        <p>No song loaded</p>
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Music className="h-5 w-5" />
+            Current Song
+          </CardTitle>
+          <CardDescription>No song loaded</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-muted-foreground text-center py-8">
+            Load a NoteSequence from the JSON Input tab or import a MIDI file to get started.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -49,95 +62,112 @@ export default function SongDisplay({
   }
 
   // Convert MIDI note number to note name
-  const midiNoteToName = (midiNote: number) => {
+  const noteNumberToName = (noteNumber: number): string => {
     const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    const octave = Math.floor(midiNote / 12) - 1;
-    const noteName = noteNames[midiNote % 12];
+    const octave = Math.floor(noteNumber / 12) - 1;
+    const noteName = noteNames[noteNumber % 12];
     return `${noteName}${octave}`;
   };
 
-  const noteCount = currentSong.notes ? currentSong.notes.length : 0;
-  const totalTime = currentSong.totalTime || 0;
+  // Get instrument name from program number
+  const getInstrumentName = (program: number): string => {
+    return midiInstruments[program]?.name || `Program ${program}`;
+  };
+
+  // Calculate note range
+  const pitches = currentSong.notes.map(note => note.pitch);
+  const minPitch = Math.min(...pitches);
+  const maxPitch = Math.max(...pitches);
 
   return (
-    <div className="bg-white p-6 rounded-md shadow-md mb-5">
-      <h2 className="text-xl font-semibold border-b pb-2 mb-4">Current Song</h2>
-      
-      <div className="mb-4">
-        <p><strong>Notes:</strong> {noteCount}</p>
-        <p><strong>Duration:</strong> {totalTime.toFixed(2)} seconds</p>
-        <p><strong>Last Updated:</strong> {new Date().toLocaleString()}</p>
-      </div>
-      
-      <div className="bg-gray-50 p-3 rounded border mb-4 font-mono text-sm h-48 overflow-y-auto">
-        {currentSong.notes.slice(0, 20).map((note, index) => (
-          <div key={index}>
-            Note: {note.pitch} ({midiNoteToName(note.pitch)}), 
-            Start: {note.startTime}s, 
-            End: {note.endTime}s, 
-            Velocity: {note.velocity || 80}, 
-            Channel: {note.instrument || 0}
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Music className="h-5 w-5" />
+          Current Song
+        </CardTitle>
+        <CardDescription>
+          {currentSong.notes.length} notes • {currentSong.totalTime?.toFixed(2) || 0}s duration
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Song Statistics */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center p-3 bg-muted rounded-lg">
+            <div className="text-2xl font-bold">{currentSong.notes.length}</div>
+            <div className="text-sm text-muted-foreground">Notes</div>
           </div>
-        ))}
-        {currentSong.notes.length > 20 && (
-          <div className="mt-2">... and {currentSong.notes.length - 20} more notes</div>
-        )}
-      </div>
-      
-      <h3 className="text-lg font-semibold border-b pb-2 mb-2">Channel Information</h3>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-4">
-        {Array.from(channels.keys()).sort((a, b) => a - b).map(channel => {
-          const info = channels.get(channel);
-          if (!info) return null;
-          
-          let instrumentName = 'Unknown';
-          
-          if (channel === 9) { // Channel 10 (0-indexed as 9)
-            instrumentName = 'Drum Kit';
-          } else if (midiInstruments[info.program]) {
-            instrumentName = midiInstruments[info.program].name;
-          }
-          
-          const isDrumChannel = channel === 9;
-          
-          return (
-            <div 
-              key={channel}
-              className={`p-3 rounded border ${isDrumChannel ? 'bg-red-50 border-red-200' : 'bg-gray-50'}`}
-            >
-              <div className="font-bold text-gray-800">Ch {channel + 1}</div>
-              <div>{instrumentName}</div>
-              <div className="text-sm text-gray-600">Program: {info.program}</div>
-              <div className="text-sm text-gray-600">Notes: {info.noteCount}</div>
+          <div className="text-center p-3 bg-muted rounded-lg">
+            <div className="text-2xl font-bold">{channels.size}</div>
+            <div className="text-sm text-muted-foreground">Channels</div>
+          </div>
+          <div className="text-center p-3 bg-muted rounded-lg">
+            <div className="text-2xl font-bold">{noteNumberToName(minPitch)} - {noteNumberToName(maxPitch)}</div>
+            <div className="text-sm text-muted-foreground">Range</div>
+          </div>
+          <div className="text-center p-3 bg-muted rounded-lg">
+            <div className="text-2xl font-bold">{currentSong.totalTime?.toFixed(1) || 0}s</div>
+            <div className="text-sm text-muted-foreground">Duration</div>
+          </div>
+        </div>
+
+        {/* Channel Information */}
+        {channels.size > 0 && (
+          <div>
+            <h3 className="text-lg font-semibold mb-3">Channel Information</h3>
+            <div className="space-y-2">
+              {Array.from(channels.entries()).map(([channel, info]) => (
+                <div key={channel} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+                      {channel}
+                    </div>
+                    <div>
+                      <div className="font-medium">
+                        {channel === 9 ? 'Drums' : getInstrumentName(info.program)}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Channel {channel} • {info.noteCount} notes
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    Program {info.program}
+                  </div>
+                </div>
+              ))}
             </div>
-          );
-        })}
-      </div>
-      
-      <div className="flex gap-3 mb-2">
-        <button 
-          type="button"
-          onClick={onPlay}
-          disabled={isPlaying}
-          className="bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded disabled:bg-gray-400"
-        >
-          {isPlaying ? 'Playing...' : 'Play to DAW'}
-        </button>
-        <button 
-          type="button"
-          onClick={onExport}
-          className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded"
-        >
-          Export MIDI
-        </button>
-      </div>
-      
-      <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-teal-500 transition-all duration-300"
-          style={{ width: `${playbackProgress}%` }}
-        />
-      </div>
-    </div>
+          </div>
+        )}
+
+        {/* Playback Progress */}
+        {isPlaying && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium">Playing...</span>
+              <span className="text-sm text-muted-foreground">{Math.round(playbackProgress)}%</span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2">
+              <div 
+                className="bg-primary h-2 rounded-full transition-all duration-300" 
+                style={{ width: `${playbackProgress}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          <Button onClick={onPlay} disabled={isPlaying} className="flex items-center gap-2">
+            <Play className="h-4 w-4" />
+            {isPlaying ? 'Playing...' : 'Play'}
+          </Button>
+          <Button variant="outline" onClick={onExport} className="flex items-center gap-2">
+            <Download className="h-4 w-4" />
+            Export
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
