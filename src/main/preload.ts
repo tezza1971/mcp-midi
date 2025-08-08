@@ -43,5 +43,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onShowAbout: (callback: () => void) => {
     ipcRenderer.on('show-about', () => callback());
+  },
+  onMidiConnectionStatus: (callback: (status: any) => void) => {
+    ipcRenderer.on('midi-connection-status', (event, status) => callback(status));
+  },
+  removeMidiConnectionStatusListener: (callback: (status: any) => void) => {
+    ipcRenderer.removeListener('midi-connection-status', (event, status) => callback(status));
   }
 });

@@ -20,6 +20,8 @@ declare global {
       onMcpServerStatus: (callback: (data: McpServerStatus) => void) => void;
       onOpenSettings: (callback: () => void) => void;
       onShowAbout: (callback: () => void) => void;
+      onMidiConnectionStatus: (callback: (status: { connected: boolean; deviceName?: string; error?: any }) => void) => void;
+      removeMidiConnectionStatusListener: (callback: (status: { connected: boolean; deviceName?: string; error?: any }) => void) => void;
     };
   }
 }

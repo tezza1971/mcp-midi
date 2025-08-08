@@ -59,7 +59,9 @@ export default defineConfig({
     renderer(),
   ],
   server: {
-    port: 8080,
+    port: 5173, // Changed to a different port that's less likely to be blocked
+    strictPort: false, // Allow fallback to available port
+    host: '127.0.0.1', // Explicitly use IPv4 to avoid IPv6 issues
   },
   build: {
     outDir: 'dist',

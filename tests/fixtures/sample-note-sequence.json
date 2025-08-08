@@ -1,0 +1,9 @@
+{
+  "notes": [
+    { "pitch": 60, "startTime": 0.0, "endTime": 0.5, "velocity": 80, "instrument": 0, "program": 0 },
+    { "pitch": 64, "startTime": 0.5, "endTime": 1.0, "velocity": 80, "instrument": 0, "program": 0 }
+  ],
+  "tempos": [ { "time": 0, "qpm": 120 } ],
+  "timeSignatures": [ { "time": 0, "numerator": 4, "denominator": 4 } ],
+  "totalTime": 1.0
+}

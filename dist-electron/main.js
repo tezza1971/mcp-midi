@@ -625,6 +625,56 @@ let config = {
   lastUsedSong: null
 };
 const isDev = process.env.NODE_ENV === "development";
+function cleanup() {
+  console.log("Performing cleanup...");
+  if (mcpServerInstance) {
+    console.log("Closing MCP server...");
+    mcpServerInstance.close(() => {
+      console.log("MCP server closed");
+    });
+    mcpServerInstance = null;
+  }
+  if (midiManager) {
+    console.log("Closing MIDI manager...");
+    midiManager.close();
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    console.log("Closing main window...");
+    mainWindow.close();
+    mainWindow = null;
+  }
+}
+electron.app.on("before-quit", (event) => {
+  console.log("App is about to quit");
+  cleanup();
+});
+electron.app.on("window-all-closed", () => {
+  console.log("All windows closed");
+  cleanup();
+  if (process.platform !== "darwin") {
+    electron.app.quit();
+  }
+});
+process.on("SIGTERM", () => {
+  console.log("Received SIGTERM");
+  cleanup();
+  electron.app.quit();
+});
+process.on("SIGINT", () => {
+  console.log("Received SIGINT");
+  cleanup();
+  electron.app.quit();
+});
+process.on("uncaughtException", (error) => {
+  console.error("Uncaught Exception:", error);
+  cleanup();
+  electron.app.quit();
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("Unhandled Rejection at:", promise, "reason:", reason);
+  cleanup();
+  electron.app.quit();
+});
 function createWindow() {
   mainWindow = new electron.BrowserWindow({
     width: 1200,
@@ -636,7 +686,7 @@ function createWindow() {
     }
   });
   if (isDev) {
-    mainWindow.loadURL("http://localhost:8080");
+    mainWindow.loadURL("http://localhost:5173");
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
@@ -734,6 +784,19 @@ function initializeMcpServer() {
   try {
     mcpServerInstance = mcpServer.listen(config.mcpPort, () => {
       console.log(`MCP API server running on port ${config.mcpPort}`);
+    });
+    mcpServerInstance.on("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        console.error(`Port ${config.mcpPort} is already in use. Trying alternative port...`);
+        const altPort = config.mcpPort + 1;
+        mcpServerInstance = mcpServer.listen(altPort, () => {
+          config.mcpPort = altPort;
+          console.log(`MCP API server running on alternative port ${altPort}`);
+          saveConfig();
+        });
+      } else {
+        console.error("Failed to start MCP server:", error);
+      }
     });
   } catch (error) {
     console.error("Failed to start MCP server:", error);
@@ -923,6 +986,15 @@ function loadConfig() {
     }
   } catch (error) {
     console.error("Error loading config:", error);
+  }
+}
+function saveConfig() {
+  try {
+    const configPath = path.join(electron.app.getPath("userData"), "config.json");
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log("Configuration saved");
+  } catch (error) {
+    console.error("Error saving config:", error);
   }
 }
 electron.app.whenReady().then(() => {

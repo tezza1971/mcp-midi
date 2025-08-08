@@ -53,6 +53,7 @@ export interface AppConfig {
   mcpPort: number;
   pythonPort: number;
   lastUsedSong: string | null;
+  apiToken?: string | null;
 }
 
 export interface SongInfo {

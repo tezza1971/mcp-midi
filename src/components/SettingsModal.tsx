@@ -9,16 +9,20 @@ interface SettingsModalProps {
 
 export default function SettingsModal({ config, onClose, onSave }: SettingsModalProps) {
   const [mcpPort, setMcpPort] = useState(config.mcpPort);
+  const [apiToken, setApiToken] = useState(config.apiToken || '');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (isNaN(mcpPort) || mcpPort < 1024 || mcpPort > 65535) {
       alert('Please enter a valid port number (1024-65535)');
       return;
     }
-    
+
     onSave({ mcpPort });
+    if (apiToken !== undefined) {
+      onSave({ apiToken: apiToken || null });
+    }
   };
 
   return (
@@ -39,17 +43,30 @@ export default function SettingsModal({ config, onClose, onSave }: SettingsModal
         <form onSubmit={handleSubmit} className="p-4">
           <div className="mb-4">
             <label htmlFor="mcp-port" className="block font-semibold mb-1">MCP API Port:</label>
-            <input 
-              type="number" 
-              id="mcp-port" 
+            <input
+              type="number"
+              id="mcp-port"
               value={mcpPort}
               onChange={(e) => setMcpPort(parseInt(e.target.value, 10))}
-              min="1024" 
-              max="65535" 
+              min="1024"
+              max="65535"
               required
               className="w-full p-2 border rounded"
             />
             <small className="text-gray-500">Port must be between 1024 and 65535</small>
+          </div>
+
+          <div className="mb-4">
+            <label htmlFor="api-token" className="block font-semibold mb-1">API Token (optional):</label>
+            <input
+              type="text"
+              id="api-token"
+              value={apiToken}
+              onChange={(e) => setApiToken(e.target.value)}
+              className="w-full p-2 border rounded"
+              placeholder="Leave empty to disable">
+            </input>
+            <small className="text-gray-500">If set, clients must provide this token in the Authorization header as Bearer &lt;token&gt;.</small>
           </div>
           
           <div className="text-right mt-6">

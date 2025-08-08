@@ -2,13 +2,20 @@ import { McpServerStatus } from '../types';
 import { Card, CardContent } from './ui/Card';
 import { CheckCircle, XCircle, Wifi, WifiOff } from 'lucide-react';
 
+interface MidiConnectionStatus {
+  connected: boolean;
+  deviceName?: string;
+  error?: any;
+}
+
 interface StatusBarProps {
   apiStatus: McpServerStatus;
   midiOutputs: string[];
+  midiConnectionStatus: MidiConnectionStatus;
 }
 
-export default function StatusBar({ apiStatus, midiOutputs }: StatusBarProps) {
-  const isMidiAvailable = midiOutputs.includes('MCP MIDI Bridge');
+export default function StatusBar({ apiStatus, midiOutputs, midiConnectionStatus }: StatusBarProps) {
+  const isMidiAvailable = midiConnectionStatus.connected;
 
   return (
     <Card>
@@ -37,7 +44,7 @@ export default function StatusBar({ apiStatus, midiOutputs }: StatusBarProps) {
               <WifiOff className="h-4 w-4 text-red-500" />
             )}
             <span className="text-sm font-medium">
-              MIDI: {isMidiAvailable ? 'MCP MIDI Bridge' : 'Not available'}
+              MIDI: {isMidiAvailable ? `Connected to ${midiConnectionStatus.deviceName}` : 'Not connected'}
             </span>
           </div>
         </div>

@@ -53,6 +53,7 @@ export class SongCache {
         filename
       };
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error saving song:', error);
       return {
         success: false,
@@ -84,6 +85,7 @@ export class SongCache {
       
       return JSON.parse(content) as NoteSequence;
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error getting latest song:', error);
       return null;
     }
@@ -116,6 +118,7 @@ export class SongCache {
         };
       });
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error getting song list:', error);
       return [];
     }
@@ -137,6 +140,7 @@ export class SongCache {
       const content = fs.readFileSync(filepath, 'utf8');
       return JSON.parse(content) as NoteSequence;
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error(`Error getting song ${filename}:`, error);
       return null;
     }
@@ -158,6 +162,7 @@ export class SongCache {
       fs.unlinkSync(filepath);
       return true;
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error(`Error deleting song ${filename}:`, error);
       return false;
     }

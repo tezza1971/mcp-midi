@@ -23,12 +23,23 @@ function App() {
   });
   const [songList, setSongList] = useState<SongInfo[]>([]);
   const [isServerRunning, setIsServerRunning] = useState(false);
+  const [midiConnectionStatus, setMidiConnectionStatus] = useState<{ connected: boolean }>({ connected: false });
 
   useEffect(() => {
     // Load initial data when component mounts
     loadSongList();
     loadLatestSong();
     checkServerStatus();
+
+    const handleMidiConnectionStatus = (status: { connected: boolean }) => {
+      setMidiConnectionStatus(status);
+    };
+
+    window.electronAPI.onMidiConnectionStatus(handleMidiConnectionStatus);
+
+    return () => {
+      window.electronAPI.removeMidiConnectionStatusListener(handleMidiConnectionStatus);
+    };
   }, []);
 
   const loadSongList = async () => {
@@ -133,6 +144,7 @@ function App() {
             port: config.mcpPort,
           }}
           midiOutputs={[]}
+          midiConnectionStatus={midiConnectionStatus}
         />
 
         {/* Main Content */}

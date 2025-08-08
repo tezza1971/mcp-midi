@@ -3,17 +3,22 @@ import path from 'path';
 import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
+import logger from '../lib/logger';
+import noteSequenceSchema from '../schemas/note-sequence.schema.json';
 import { ChildProcess } from 'child_process';
 
 import { MidiManager } from '../common/midi-manager';
 import { SongCache } from '../common/song-cache';
 import { startPythonServer } from '../common/python-server';
-import { 
-  NoteSequence, 
-  AppConfig, 
-  SongInfo, 
-  MidiFileResult, 
-  ConfigUpdateResult, 
+import {
+  NoteSequence,
+  AppConfig,
+  SongInfo,
+  MidiFileResult,
+  ConfigUpdateResult,
   McpServerStatus,
   PlayMidiResult,
   SaveSongResult
@@ -31,10 +36,102 @@ let pythonServer: { process: ChildProcess; url: string } | null = null;
 let config: AppConfig = {
   mcpPort: 8002,
   pythonPort: 5000,
-  lastUsedSong: null
+  lastUsedSong: null,
+  apiToken: null
 };
 
 const isDev = process.env.NODE_ENV === 'development';
+
+// Cleanup function to properly close all servers and resources
+function cleanup(): void {
+  logger.info('Performing cleanup...');
+
+  // Close MCP server
+  if (mcpServerInstance) {
+    logger.info('Closing MCP server...');
+    try {
+      mcpServerInstance.close(() => {
+        logger.info('MCP server closed');
+      });
+    } catch (err) {
+      logger.warn({ err }, 'Error closing MCP server instance');
+    }
+    mcpServerInstance = null;
+  }
+
+  // Close Python server
+  if (pythonServer?.process) {
+    logger.info('Terminating Python server...');
+    try {
+      pythonServer.process.kill('SIGTERM');
+    } catch (err) {
+      logger.warn({ err }, 'Failed to terminate Python server process');
+    }
+    pythonServer = null;
+  }
+
+  // Close MIDI manager
+  if (midiManager) {
+    logger.info('Closing MIDI manager...');
+    try {
+      midiManager.close();
+    } catch (err) {
+      logger.warn({ err }, 'Error closing MIDI manager');
+    }
+  }
+
+  // Close main window
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    logger.info('Closing main window...');
+    try {
+      mainWindow.close();
+      mainWindow = null;
+    } catch (err) {
+      logger.warn({ err }, 'Error closing main window');
+    }
+  }
+}
+
+// Handle app termination
+app.on('before-quit', (event) => {
+  logger.info('App is about to quit');
+  cleanup();
+});
+
+// Handle all windows closed
+app.on('window-all-closed', () => {
+  logger.info('All windows closed');
+  cleanup();
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
+
+// Handle app termination signals
+process.on('SIGTERM', () => {
+  logger.info('Received SIGTERM');
+  cleanup();
+  app.quit();
+});
+
+process.on('SIGINT', () => {
+  logger.info('Received SIGINT');
+  cleanup();
+  app.quit();
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error({ err: error }, 'Uncaught Exception');
+  cleanup();
+  app.quit();
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error({ err: reason, promise }, 'Unhandled Rejection');
+  cleanup();
+  app.quit();
+});
 
 function createWindow(): void {
   // Create the browser window
@@ -50,7 +147,7 @@ function createWindow(): void {
 
   // Load the app
   if (isDev) {
-    mainWindow.loadURL('http://localhost:8080');
+    mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
@@ -66,7 +163,7 @@ function initializeComponents(): void {
   try {
     // Initialize MIDI manager
     midiManager = new MidiManager();
-    console.log('MIDI Manager initialized');
+    logger.info('MIDI Manager initialized');
 
     // Listen for MIDI connection status events
     midiManager.on('midi-connection-status', (status) => {
@@ -78,7 +175,7 @@ function initializeComponents(): void {
     // Initialize song cache
     const cacheDir = path.join(app.getPath('userData'), 'song_cache');
     songCache = new SongCache(cacheDir);
-    console.log('Song Cache initialized');
+    logger.info('Song Cache initialized');
 
     // Start Python server (disabled by default, enable if needed)
     if (isDev) {
@@ -94,7 +191,7 @@ function initializeComponents(): void {
     // Initialize MCP server
     initializeMcpServer();
   } catch (error) {
-    console.error('Failed to initialize components:', error);
+    logger.error({ err: error }, 'Failed to initialize components');
   }
 }
 
@@ -104,24 +201,70 @@ function initializeMcpServer(): void {
   mcpServer.use(cors());
   mcpServer.use(express.json({ limit: '10mb' }));
 
+  // Rate limiter for write endpoints
+  const writeLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 60, // limit each IP to 60 requests per windowMs
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+
+  // AJV validator
+  const ajv = new Ajv({ allErrors: true });
+  addFormats(ajv);
+  const validateNoteSequence = ajv.compile(noteSequenceSchema as object);
+
+  // Auth middleware: if apiToken configured, require Bearer token
+  const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    try {
+      const configPath = path.join(app.getPath('userData'), 'config.json');
+      let localConfig: AppConfig = config;
+      if (fs.existsSync(configPath)) {
+        try {
+          const data = fs.readFileSync(configPath, 'utf8');
+          localConfig = { ...localConfig, ...JSON.parse(data) };
+        } catch (e) {
+          logger.warn('Failed to read config for auth middleware, falling back to in-memory config');
+        }
+      }
+
+      if (localConfig.apiToken) {
+        const authHeader = req.header('Authorization') || '';
+        if (!authHeader.startsWith('Bearer ')) {
+          return res.status(401).json({ error: 'Missing Authorization header' });
+        }
+        const token = authHeader.replace('Bearer ', '').trim();
+        if (token !== localConfig.apiToken) {
+          return res.status(403).json({ error: 'Invalid API token' });
+        }
+      }
+      next();
+    } catch (error) {
+      logger.error({ err: error }, 'Error in auth middleware');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  };
+
   // Health check endpoint
   mcpServer.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
   // Receive NoteSequence from LLM
-  mcpServer.post('/song', (req, res) => {
+  mcpServer.post('/song', writeLimiter, authMiddleware, (req, res) => {
     try {
-      const noteSequence: NoteSequence = req.body;
-      
-      // Validate the note sequence
-      if (!noteSequence || !noteSequence.notes) {
-        return res.status(400).json({ error: 'Invalid NoteSequence format' });
+      const noteSequence = req.body;
+
+      // Validate payload against schema
+      const valid = validateNoteSequence(noteSequence);
+      if (!valid) {
+        logger.warn({ errors: validateNoteSequence.errors }, 'Invalid NoteSequence received');
+        return res.status(400).json({ error: 'Invalid NoteSequence format', details: validateNoteSequence.errors });
       }
 
       // Save to cache
-      const saveResult = songCache.saveSong(noteSequence);
-      
+      const saveResult = songCache.saveSong(noteSequence as NoteSequence);
+
       if (saveResult.success) {
         // Notify the renderer process
         if (mainWindow) {
@@ -135,10 +278,11 @@ function initializeMcpServer(): void {
           timestamp: saveResult.timestamp
         });
       } else {
+        logger.error({ err: saveResult.error }, 'Failed to save song');
         res.status(500).json({ error: saveResult.error });
       }
     } catch (error) {
-      console.error('Error processing song:', error);
+      logger.error({ err: error }, 'Error processing song');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -153,7 +297,7 @@ function initializeMcpServer(): void {
         res.status(404).json({ error: 'No songs found' });
       }
     } catch (error) {
-      console.error('Error getting song:', error);
+      logger.error({ err: error }, 'Error getting song');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -164,24 +308,27 @@ function initializeMcpServer(): void {
       const songs = songCache.getSongList();
       res.json(songs);
     } catch (error) {
-      console.error('Error getting song list:', error);
+      logger.error({ err: error }, 'Error getting song list');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
 
   // Play song endpoint
-  mcpServer.post('/play', async (req, res) => {
+  mcpServer.post('/play', writeLimiter, authMiddleware, async (req, res) => {
     try {
-      const noteSequence: NoteSequence = req.body;
-      
-      if (!noteSequence || !noteSequence.notes) {
-        return res.status(400).json({ error: 'Invalid NoteSequence format' });
+      const noteSequence = req.body;
+
+      // Validate
+      const valid = validateNoteSequence(noteSequence);
+      if (!valid) {
+        logger.warn({ errors: validateNoteSequence.errors }, 'Invalid NoteSequence received for play');
+        return res.status(400).json({ error: 'Invalid NoteSequence format', details: validateNoteSequence.errors });
       }
 
-      const result = await midiManager.playNoteSequence(noteSequence);
+      const result = await midiManager.playNoteSequence(noteSequence as NoteSequence);
       res.json(result);
     } catch (error) {
-      console.error('Error playing song:', error);
+      logger.error({ err: error }, 'Error playing song');
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -190,6 +337,22 @@ function initializeMcpServer(): void {
   try {
     mcpServerInstance = mcpServer.listen(config.mcpPort, () => {
       console.log(`MCP API server running on port ${config.mcpPort}`);
+    });
+
+    mcpServerInstance.on('error', (error: any) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`Port ${config.mcpPort} is already in use. Trying alternative port...`);
+        // Try alternative port
+        const altPort = config.mcpPort + 1;
+        mcpServerInstance = mcpServer.listen(altPort, () => {
+          config.mcpPort = altPort;
+          console.log(`MCP API server running on alternative port ${altPort}`);
+          // Save the new port to config
+          saveConfig();
+        });
+      } else {
+        console.error('Failed to start MCP server:', error);
+      }
     });
   } catch (error) {
     console.error('Failed to start MCP server:', error);
@@ -320,24 +483,29 @@ function setupIpcHandlers(): void {
   });
 
   // Update configuration
-  ipcMain.handle('update-config', async (event, newConfig: AppConfig): Promise<ConfigUpdateResult> => {
+  ipcMain.handle('update-config', async (event, newConfig: Partial<AppConfig>): Promise<ConfigUpdateResult> => {
     try {
-      config = { ...config, ...newConfig };
+      config = { ...config, ...newConfig } as AppConfig;
 
       // Save config to file
       const configPath = path.join(app.getPath('userData'), 'config.json');
       fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
 
       // Restart MCP server if port changed
-      if (mcpServerInstance && newConfig.mcpPort !== config.mcpPort) {
+      if (mcpServerInstance && typeof newConfig.mcpPort === 'number' && newConfig.mcpPort !== config.mcpPort) {
         mcpServerInstance.close();
-        config.mcpPort = newConfig.mcpPort;
+        config.mcpPort = newConfig.mcpPort as number;
         initializeMcpServer();
+      }
+
+      // If apiToken changed, log it (do not log token value)
+      if (newConfig && Object.prototype.hasOwnProperty.call(newConfig, 'apiToken')) {
+        logger.info('API token configuration updated');
       }
 
       return { success: true };
     } catch (error) {
-      console.error('Error updating config:', error);
+      logger.error({ err: error }, 'Error updating config');
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
   });
@@ -419,6 +587,17 @@ function loadConfig(): void {
   }
 }
 
+// Save configuration
+function saveConfig(): void {
+  try {
+    const configPath = path.join(app.getPath('userData'), 'config.json');
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log('Configuration saved');
+  } catch (error) {
+    console.error('Error saving config:', error);
+  }
+}
+
 // App event handlers
 app.whenReady().then(() => {
   loadConfig();
@@ -440,7 +619,7 @@ app.on('window-all-closed', () => {
     mcpServerInstance.close();
   }
 
-  if (pythonServer?.process) {
+  if (pythonServer && pythonServer.process) {
     try {
       pythonServer.process.kill();
     } catch (error) {
@@ -459,7 +638,7 @@ app.on('before-quit', () => {
     mcpServerInstance.close();
   }
 
-  if (pythonServer?.process) {
+  if (pythonServer && pythonServer.process) {
     try {
       pythonServer.process.kill();
     } catch (error) {

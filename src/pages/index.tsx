@@ -6,6 +6,7 @@ import MidiImport from '../components/MidiImport';
 import StatusBar from '../components/StatusBar';
 import SettingsModal from '../components/SettingsModal';
 import AboutModal from '../components/AboutModal';
+import clientLogger from '../lib/clientLogger';
 
 export default function Home() {
   // State
@@ -19,6 +20,9 @@ export default function Home() {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+
+  // Add state for MIDI connection status
+  const [midiConnectionStatus, setMidiConnectionStatus] = useState<{ connected: boolean; deviceName?: string; error?: any }>({ connected: false });
 
   // Initialize the application
   useEffect(() => {
@@ -45,7 +49,7 @@ export default function Home() {
           setCurrentSong(song);
         }
       } catch (error) {
-        console.error('Failed to initialize:', error);
+        clientLogger.error('Failed to initialize:', error);
       }
     };
 
@@ -56,7 +60,7 @@ export default function Home() {
   useEffect(() => {
     // Song updated event
     window.electronAPI.onSongUpdated((data: SaveSongResult) => {
-      console.log('Song updated:', data);
+      clientLogger.info('Song updated:', data);
       // Reload the current song
       window.electronAPI.getCurrentSong().then(song => {
         setCurrentSong(song);
@@ -86,6 +90,20 @@ export default function Home() {
     });
   }, []);
 
+  // Add event listener for MIDI connection status
+  useEffect(() => {
+    const handleMidiConnectionStatus = (status: { connected: boolean; deviceName?: string; error?: any }) => {
+      clientLogger.info('MIDI connection status:', status);
+      setMidiConnectionStatus(status);
+    };
+
+    window.electronAPI.onMidiConnectionStatus(handleMidiConnectionStatus);
+
+    return () => {
+      window.electronAPI.removeMidiConnectionStatusListener(handleMidiConnectionStatus);
+    };
+  }, []);
+
   // Handle playing MIDI
   const handlePlayMidi = async () => {
     if (!currentSong) return;
@@ -96,10 +114,10 @@ export default function Home() {
     try {
       const result = await window.electronAPI.playMidi(currentSong);
       if (!result.success) {
-        console.error('Failed to play MIDI:', result.error);
+        clientLogger.error('Failed to play MIDI:', result.error);
       }
     } catch (error) {
-      console.error('Error playing MIDI:', error);
+      clientLogger.error('Error playing MIDI:', error);
     } finally {
       setIsPlaying(false);
     }
@@ -111,7 +129,7 @@ export default function Home() {
 
     // This would typically open a save dialog
     // For now, we'll just log that it would export
-    console.log('Would export MIDI file for:', currentSong);
+    clientLogger.info('Would export MIDI file for:', currentSong);
     alert('Export functionality will be implemented in a future version.');
   };
 
@@ -125,7 +143,7 @@ export default function Home() {
         alert(`Failed to import MIDI file: ${result.error}`);
       }
     } catch (error) {
-      console.error('Error importing MIDI file:', error);
+      clientLogger.error('Error importing MIDI file:', error);
       alert('An error occurred while importing the MIDI file.');
     }
   };
@@ -141,7 +159,7 @@ export default function Home() {
         alert(`Failed to update settings: ${result.error}`);
       }
     } catch (error) {
-      console.error('Error updating settings:', error);
+      clientLogger.error('Error updating settings:', error);
       alert('An error occurred while updating settings.');
     }
   };
@@ -159,12 +177,18 @@ export default function Home() {
       </header>
 
       <main className="container mx-auto p-4">
-        <StatusBar 
-          apiStatus={apiStatus} 
-          midiOutputs={midiOutputs} 
+        <StatusBar
+          apiStatus={apiStatus}
+          midiOutputs={midiOutputs}
+          midiConnectionStatus={midiConnectionStatus}
         />
 
-        <SongDisplay 
+        {/* Example UI display for MIDI connection status */}
+        <div className="mb-2 text-sm text-gray-600">
+          MIDI: {midiConnectionStatus.connected ? `Connected to ${midiConnectionStatus.deviceName}` : 'Not connected'}
+        </div>
+
+        <SongDisplay
           currentSong={currentSong}
           midiInstruments={midiInstruments}
           midiDrums={midiDrums}
@@ -178,10 +202,10 @@ export default function Home() {
       </main>
 
       {isSettingsOpen && (
-        <SettingsModal 
-          config={appConfig} 
-          onClose={() => setIsSettingsOpen(false)} 
-          onSave={handleUpdateConfig} 
+        <SettingsModal
+          config={appConfig}
+          onClose={() => setIsSettingsOpen(false)}
+          onSave={handleUpdateConfig}
         />
       )}
 

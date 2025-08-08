@@ -4,11 +4,20 @@
   "description": "This project is an Electron-based desktop application that acts as a bridge between LLM-driven music generation (via the Model Context Protocol, MCP) and any DAW (Digital Audio Workstation) that accepts MIDI input. It enables AI-generated or AI-edited musical content (in Magenta NoteSequence JSON format) to be easily played, recorded, and manipulated in a DAW via a virtual MIDI device.",
   "main": "dist-electron/main.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && electron-builder",
+    "dev": "npm run kill-ports && vite",
+    "build": "tsc && vite build && electron-builder",
+    "build:renderer": "vite build",
+    "build:main": "tsc -p electron-tsconfig.json",
     "preview": "vite preview",
-    "electron:dev": "vite",
-    "electron:build": "vite build"
+    "electron": "electron .",
+    "electron:dev": "npm run kill-ports && vite",
+    "electron:build": "npm run build",
+    "kill-ports": "node ./scripts/kill-ports.js",
+    "clean": "rmdir /s /q dist dist-electron .next song_cache 2>nul || rm -rf dist dist-electron .next song_cache",
+    "test": "vitest --environment node",
+    "test:watch": "vitest --watch --environment node",
+    "ci": "npm run test",
+    "postinstall": "echo 'Postinstall: ensure native deps are built'"
   },
   "keywords": [
     "midi",
@@ -31,6 +40,9 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
+    "ajv": "^8.12.0",
+    "express-rate-limit": "^6.10.0",
+    "ajv-formats": "^2.1.1",
     "easymidi": "^3.1.0",
     "electron-is-dev": "^2.0.0",
     "express": "^5.1.0",
@@ -42,6 +54,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "vitest": "^1.2.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.19",
